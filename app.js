@@ -28,67 +28,22 @@ function euros(value) {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function showMessage(message, error = false) {
   const box = document.getElementById('message');
   if (!box) return;
+
   box.textContent = message;
+  box.classList.remove('hidden');
   box.style.background = error ? '#fbe9e7' : '#edf3ec';
   box.style.color = error ? '#a12d25' : '#263b2c';
 }
-
-function renderLogin() {
-  app.innerHTML = `
-    <header>
-      <h1>🔥 Mi control de pellet</h1>
-      <p>Controla tus compras y consumo</p>
-    </header>
-    <main>
-      <section class="card">
-        <h2>Entrar en tu cuenta</h2>
-        <p>Te enviaremos un enlace a tu correo para acceder.</p>
-        <form id="loginForm">
-          <label for="email">Tu correo electrónico</label>
-          <input id="email" type="email" required
-            placeholder="tu correo electrónico">
-          <button type="submit">Enviar enlace de acceso</button>
-        </form>
-        <div id="message" class="message hidden"></div>
-      </section>
-    </main>
-  `;
-
-  document.getElementById('loginForm').addEventListener('submit', async event => {
-    event.preventDefault();
-    const email = document.getElementById('email').value.trim();
-    const button = event.submitter;
-    button.disabled = true;
-    button.textContent = 'Enviando...';
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin +
-          window.location.pathname
-      }
-    });
-
-    button.disabled = false;
-    button.textContent = 'Enviar enlace de acceso';
-
-    const box = document.getElementById('message');
-    box.classList.remove('hidden');
-
-    if (error) {
-      showMessage('No se pudo enviar el correo: ' + error.message, true);
-    } else {
-      showMessage('¡Correo enviado! Abre el enlace que te hemos enviado para entrar.');
-    }
-  });
-}
-
 
 function getStats() {
   const sacksBought = purchases.reduce(
@@ -102,7 +57,9 @@ function getStats() {
     (sum, item) => sum + Number(item.total_cost), 0
   );
 
-  const averagePrice = sacksBought ? totalSpent / sacksBought : 0;
+  const averagePrice = sacksBought > 0
+    ? totalSpent / sacksBought
+    : 0;
 
   const now = new Date();
 
@@ -154,10 +111,7 @@ function getStats() {
     averageDays = totalDays / (dates.length - 1);
   }
 
-  const lastOpening = dates.length
-    ? dates[dates.length - 1]
-    : null;
-
+  const lastOpening = dates.length ? dates[dates.length - 1] : null;
   let daysRemaining = null;
 
   if (lastOpening && averageDays > 0 && stock > 0) {
@@ -185,7 +139,64 @@ function getStats() {
   };
 }
 
-async function loadData() {
+function renderLogin() {
+  app.innerHTML = `
+    <header>
+      <h1>🔥 Mi control de pellet</h1>
+      <p>Controla tus compras y consumo</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>Entrar en tu cuenta</h2>
+        <p>Te enviaremos un enlace a tu correo para acceder.</p>
+
+        <form id="loginForm">
+          <label for="email">Tu correo electrónico</label>
+          <input id="email" type="email" required
+            placeholder="Tu correo electrónico">
+          <button type="submit">Enviar enlace de acceso</button>
+        </form>
+
+        <div id="message" class="message hidden"></div>
+      </section>
+    </main>
+  `;
+
+  document.getElementById('loginForm')
+    .addEventListener('submit', async event => {
+      event.preventDefault();
+
+      const button = event.submitter;
+      const email = document.getElementById('email').value.trim();
+
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Enviando...';
+      }
+
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: window.location.origin +
+            window.location.pathname
+        }
+      });
+
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Enviar enlace de acceso';
+      }
+
+      if (error) {
+        showMessage('Error al enviar el correo: ' + error.message, true);
+      } else {
+        showMessage('Correo enviado. Abre el enlace que hemos enviado para entrar.');
+      }
+    });
+}
+
+async function loadData(message = '') {
   const { data: purchaseData, error: purchaseError } =
     await supabase
       .from('purchases')
@@ -214,10 +225,11 @@ async function loadData() {
 
   purchases = purchaseData || [];
   openings = openingData || [];
-  renderDashboard();
+
+  renderDashboard(message);
 }
 
-function renderDashboard() {
+function renderDashboard(message = '') {
   const stats = getStats();
 
   const purchaseList = purchases.length
@@ -233,7 +245,12 @@ function renderDashboard() {
   const openingList = openings.length
     ? openings.map(item => `
         <div class="list-item">
-          Apertura del <strong>${escapeHTML(item.opening_date)}</strong>
+          <strong>Apertura: ${escapeHTML(item.opening_date)}</strong>
+          <button type="button"
+            class="danger delete-opening"
+            data-id="${escapeHTML(item.id)}">
+            Eliminar apertura
+          </button>
         </div>
       `).join('')
     : '<p>Aún no hay sacos abiertos.</p>';
@@ -247,27 +264,43 @@ function renderDashboard() {
     <main>
       <section class="card">
         <h2>📊 Mi resumen</h2>
+
         <div class="stats">
           <div class="stat">
             Sacos disponibles
             <strong>${stats.stock}</strong>
           </div>
+
           <div class="stat">
             Kilos disponibles
             <strong>${stats.stock * 15} kg</strong>
           </div>
+
           <div class="stat">
-            Gasto total
+            Gasto total en compras
             <strong>${euros(stats.totalSpent)}</strong>
           </div>
+
           <div class="stat">
             Precio medio por saco
             <strong>${euros(stats.averagePrice)}</strong>
           </div>
+
+          <div class="stat">
+            Gasto últimos 7 días
+            <strong>${euros(stats.weeklyCost)}</strong>
+          </div>
+
+          <div class="stat">
+            Gasto del mes actual
+            <strong>${euros(stats.monthlyCost)}</strong>
+          </div>
+
           <div class="stat">
             Sacos abiertos
             <strong>${stats.sacksOpened}</strong>
           </div>
+
           <div class="stat">
             Duración media
             <strong>${stats.averageDays
@@ -275,6 +308,7 @@ function renderDashboard() {
               : 'Pendiente'}</strong>
           </div>
         </div>
+
         <p>
           ${stats.daysRemaining !== null
             ? 'Previsión aproximada: quedan ' +
@@ -285,6 +319,7 @@ function renderDashboard() {
 
       <section class="card">
         <h2>🛒 Registrar una compra</h2>
+
         <form id="purchaseForm">
           <label for="purchaseDate">Fecha de compra</label>
           <input id="purchaseDate" type="date"
@@ -300,15 +335,16 @@ function renderDashboard() {
 
           <button type="submit">Guardar compra</button>
         </form>
-        <div id="message" class="message hidden"></div>
       </section>
 
       <section class="card">
         <h2>🔥 Registrar apertura de un saco</h2>
+
         <form id="openingForm">
           <label for="openingDate">Fecha de apertura</label>
           <input id="openingDate" type="date"
             value="${today()}" required>
+
           <button type="submit">Registrar apertura</button>
         </form>
       </section>
@@ -323,7 +359,12 @@ function renderDashboard() {
         ${openingList}
       </section>
 
+      <div id="message" class="message ${message ? '' : 'hidden'}">
+        ${escapeHTML(message)}
+      </div>
+
       <button id="logout" class="secondary">Cerrar sesión</button>
+
       <footer>Mi control de pellet · Sacos de 15 kg</footer>
     </main>
   `;
@@ -339,8 +380,14 @@ function renderDashboard() {
       await supabase.auth.signOut();
       renderLogin();
     });
-}
 
+  document.querySelectorAll('.delete-opening')
+    .forEach(button => {
+      button.addEventListener('click', () => {
+        deleteOpening(button.dataset.id);
+      });
+    });
+}
 
 async function savePurchase(event) {
   event.preventDefault();
@@ -363,21 +410,27 @@ async function savePurchase(event) {
       total_cost: Number(document.getElementById('totalCost').value)
     };
 
+    if (!purchase.purchase_date ||
+        !Number.isInteger(purchase.sack_count) ||
+        purchase.sack_count < 1 ||
+        !Number.isFinite(purchase.total_cost) ||
+        purchase.total_cost <= 0) {
+      throw new Error('Comprueba la fecha, los sacos y el coste.');
+    }
+
     const { error } = await supabase
       .from('purchases')
       .insert(purchase);
 
     if (error) throw error;
 
-    await loadData();
+    await loadData('Compra guardada correctamente.');
 
   } catch (error) {
-    showMessage('Error al guardar: ' + error.message, true);
+    showMessage('Error al guardar la compra: ' + error.message, true);
     if (button) button.disabled = false;
   }
 }
-
-
 
 async function saveOpening(event) {
   event.preventDefault();
@@ -404,13 +457,17 @@ async function saveOpening(event) {
       opening_date: document.getElementById('openingDate').value
     };
 
+    if (!opening.opening_date) {
+      throw new Error('Selecciona una fecha de apertura.');
+    }
+
     const { error } = await supabase
       .from('openings')
       .insert(opening);
 
     if (error) throw error;
 
-    await loadData();
+    await loadData('Apertura registrada correctamente.');
 
   } catch (error) {
     showMessage('Error al registrar la apertura: ' + error.message, true);
@@ -418,27 +475,40 @@ async function saveOpening(event) {
   }
 }
 
+async function deleteOpening(id) {
+  const confirmed = confirm(
+    '¿Seguro que quieres eliminar esta apertura? Se recuperará el saco en el inventario.'
+  );
 
-  const opening = {
-    opening_date: document.getElementById('openingDate').value
-  };
+  if (!confirmed) return;
 
   const { error } = await supabase
     .from('openings')
-    .insert(opening);
-
-  button.disabled = false;
+    .delete()
+    .eq('id', id);
 
   if (error) {
-    showMessage('Error al guardar la apertura: ' + error.message, true);
+    showMessage('No se pudo eliminar la apertura: ' + error.message, true);
     return;
   }
 
-  await loadData();
+  await loadData('Apertura eliminada. El saco vuelve al inventario.');
 }
 
 async function start() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session }, error } =
+    await supabase.auth.getSession();
+
+  if (error) {
+    app.innerHTML = `
+      <main>
+        <section class="card">
+          <h2>Error de acceso</h2>
+          <p>${escapeHTML(error.message)}</p>
+        </section>
+      </main>`;
+    return;
+  }
 
   if (session) {
     await loadData();
@@ -453,4 +523,12 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 });
 
-start();
+start().catch(error => {
+  app.innerHTML = `
+    <main>
+      <section class="card">
+        <h2>Error al iniciar la aplicación</h2>
+        <p>${escapeHTML(error.message)}</p>
+      </section>
+    </main>`;
+});
