@@ -89,6 +89,7 @@ function renderLogin() {
   });
 }
 
+
 function getStats() {
   const sacksBought = purchases.reduce(
     (sum, item) => sum + Number(item.sack_count), 0
@@ -101,8 +102,39 @@ function getStats() {
     (sum, item) => sum + Number(item.total_cost), 0
   );
 
-  const totalSacks = sacksBought;
-  const averagePrice = totalSacks ? totalSpent / totalSacks : 0;
+  const averagePrice = sacksBought ? totalSpent / sacksBought : 0;
+
+  const now = new Date();
+
+  function localDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const todayDate = localDate(now);
+
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(now.getDate() - 6);
+  const weekStart = localDate(sevenDaysAgo);
+
+  const monthStart = localDate(
+    new Date(now.getFullYear(), now.getMonth(), 1)
+  );
+
+  const weeklyOpenings = openings.filter(item =>
+    item.opening_date >= weekStart &&
+    item.opening_date <= todayDate
+  ).length;
+
+  const monthlyOpenings = openings.filter(item =>
+    item.opening_date >= monthStart &&
+    item.opening_date <= todayDate
+  ).length;
+
+  const weeklyCost = weeklyOpenings * averagePrice;
+  const monthlyCost = monthlyOpenings * averagePrice;
 
   const dates = openings
     .map(item => item.opening_date)
@@ -133,6 +165,7 @@ function getStats() {
     const elapsed = Math.floor(
       (new Date() - lastDate) / 86400000
     );
+
     daysRemaining = Math.max(
       0,
       Math.round(stock * averageDays - elapsed)
@@ -146,7 +179,9 @@ function getStats() {
     totalSpent,
     averagePrice,
     averageDays,
-    daysRemaining
+    daysRemaining,
+    weeklyCost,
+    monthlyCost
   };
 }
 
