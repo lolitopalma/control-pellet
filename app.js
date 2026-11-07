@@ -343,19 +343,46 @@ async function savePurchase(event) {
 }
 
 
+
 async function saveOpening(event) {
   event.preventDefault();
 
   const button = event.submitter;
-  button.disabled = true;
+  if (button) button.disabled = true;
 
-  const stats = getStats();
+  try {
+    const { data: { user }, error: userError } =
+      await supabase.auth.getUser();
 
-  if (stats.stock <= 0) {
-    button.disabled = false;
-    showMessage('No tienes sacos disponibles. Registra primero una compra.', true);
-    return;
+    if (userError || !user) {
+      throw new Error('No se ha podido identificar tu usuario.');
+    }
+
+    const stats = getStats();
+
+    if (stats.stock <= 0) {
+      throw new Error('No tienes sacos disponibles. Registra primero una compra.');
+    }
+
+    const opening = {
+      user_id: user.id,
+      opening_date: document.getElementById('openingDate').value
+    };
+
+    const { error } = await supabase
+      .from('openings')
+      .insert(opening);
+
+    if (error) throw error;
+
+    await loadData();
+
+  } catch (error) {
+    showMessage('Error al registrar la apertura: ' + error.message, true);
+    if (button) button.disabled = false;
   }
+}
+
 
   const opening = {
     opening_date: document.getElementById('openingDate').value
