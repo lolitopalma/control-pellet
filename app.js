@@ -306,31 +306,42 @@ function renderDashboard() {
     });
 }
 
+
 async function savePurchase(event) {
   event.preventDefault();
 
   const button = event.submitter;
-  button.disabled = true;
+  if (button) button.disabled = true;
 
-  const purchase = {
-    purchase_date: document.getElementById('purchaseDate').value,
-    sack_count: Number(document.getElementById('sackCount').value),
-    total_cost: Number(document.getElementById('totalCost').value)
-  };
+  try {
+    const { data: { user }, error: userError } =
+      await supabase.auth.getUser();
 
-  const { error } = await supabase
-    .from('purchases')
-    .insert(purchase);
+    if (userError || !user) {
+      throw new Error('No se ha podido identificar tu usuario.');
+    }
 
-  button.disabled = false;
+    const purchase = {
+      user_id: user.id,
+      purchase_date: document.getElementById('purchaseDate').value,
+      sack_count: Number(document.getElementById('sackCount').value),
+      total_cost: Number(document.getElementById('totalCost').value)
+    };
 
-  if (error) {
-    showMessage('Error al guardar la compra: ' + error.message, true);
-    return;
+    const { error } = await supabase
+      .from('purchases')
+      .insert(purchase);
+
+    if (error) throw error;
+
+    await loadData();
+
+  } catch (error) {
+    showMessage('Error al guardar: ' + error.message, true);
+    if (button) button.disabled = false;
   }
-
-  await loadData();
 }
+
 
 async function saveOpening(event) {
   event.preventDefault();
